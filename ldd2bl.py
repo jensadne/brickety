@@ -35,18 +35,18 @@ import xml.etree.ElementTree as ET
 parts = {}
 
 
-class ColorTable(object):
+class LookupTable(object):
     data = []
 
-    def read(self, filename=None):
+    def read(self, filename):
         if filename is None:
-            filename = 'colorlist.csv'
+            raise IOError
 
         with open(filename) as colorfile:
             colorreader = csv.DictReader(colorfile, delimiter=b';')
             for row in colorreader:
                 self.data.append(row)
-                
+
     def by_legoid(self, legoid):
         for c in self.data:
             if len(c['LEGOID']) > 0:
@@ -79,7 +79,7 @@ def parse_xml(indata):
     return parts
 
 
-def make_wanted_list(parts, colortable):
+def make_wanted_list(parts, colortable, elementtable):
     out_data = []
 
     out_data.append('<INVENTORY>')
@@ -88,10 +88,15 @@ def make_wanted_list(parts, colortable):
         item_id = part[0]
 
         color = colortable.by_legoid(lego_color)
-        
+
+        element = elementtable.by_legoid(item_id)
+
+        if element is not None:
+            item_id = element['BLID']
+
         out_data.append('\t<ITEM>')
         out_data.append('\t\t<ITEMTYPE>P</ITEMTYPE>')
-        out_data.append('\t\t<ITEMID>%s</ITEMID>' % part[0])
+        out_data.append('\t\t<ITEMID>%s</ITEMID>' % item_id)
         out_data.append('\t\t<COLOR>%s</COLOR>' % color['BLID'])
         out_data.append('\t\t<MINQTY>%d</MINQTY>' % parts[part])
         out_data.append('\t</ITEM>')
@@ -104,13 +109,16 @@ def main():
     if not os.path.isfile(sys.argv[1]):
         raise IOError
 
-    ct = ColorTable()
-    ct.read()
+    ct = LookupTable()
+    ct.read('colorlist.csv')
+
+    et = LookupTable()
+    et.read('elementlist.csv')
 
     filename = sys.argv[1]
     xml_data = extract_xml(filename)
     parts = parse_xml(xml_data)
-    print(make_wanted_list(parts, colortable=ct))
+    print(make_wanted_list(parts, colortable=ct, elementtable=et))
 
 
 if __name__ == '__main__':
