@@ -29,6 +29,7 @@ import os
 import sys
 import zipfile
 import csv
+import argparse
 
 import xml.etree.ElementTree as ET
 
@@ -59,6 +60,7 @@ class LookupTable(object):
 def extract_xml(filename):
     with zipfile.ZipFile(filename, 'r') as inzip:
         with inzip.open('IMAGE100.LXFML') as inxml:
+            # print(inxml.read())
             return inxml.read()
 
 
@@ -79,7 +81,7 @@ def parse_xml(indata):
     return parts
 
 
-def make_wanted_list(parts, colortable, elementtable):
+def make_wanted_list(parts, colortable, elementtable, notify=False, condition=None, listid=None):
     out_data = []
 
     out_data.append('<INVENTORY>')
@@ -99,14 +101,51 @@ def make_wanted_list(parts, colortable, elementtable):
         out_data.append('\t\t<ITEMID>%s</ITEMID>' % item_id)
         out_data.append('\t\t<COLOR>%s</COLOR>' % color['BLID'])
         out_data.append('\t\t<MINQTY>%d</MINQTY>' % parts[part])
+        
+        if notify:
+            out_data.append('\t\t<NOTIFY>Y</NOTIFY>')
+        else:
+            out_data.append('\t\t<NOTIFY>N</NOTIFY>')
+
+        if condition is not None:
+            assert condition.lower() == 'new' or condition.lower() == 'used'
+            out_data.append('\t\t<CONDITION>%s</CONDITION>' % condition.upper()[0])
+
+        if listid is not None:
+            out_data.append('\t\t<WANTEDLISTID>%s</WANTEDLISTID>' % listid)
+
         out_data.append('\t</ITEM>')
 
     out_data.append('</INVENTORY>')
     return "\n".join(out_data)
 
 
+def init_arg_parser():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('ldd_file', type=str)
+
+    parser.add_argument("--notify", action="store_true", help="Requests notification of availability")
+
+    parser.add_argument("--condition", choices=['new', 'used'], help="Specify condition new/used")
+
+    parser.add_argument("--listid", type=str, help="Specify wantedlist id to add to")
+
+    return parser
+
+
 def main():
-    if not os.path.isfile(sys.argv[1]):
+    parser = init_arg_parser()
+    args = parser.parse_args()
+
+    print(args)
+
+    infile = args.ldd_file
+    notify = args.notify
+    condition = args.condition
+    listid = args.listid
+
+    if not os.path.isfile(infile):
         raise IOError
 
     ct = LookupTable()
@@ -115,10 +154,15 @@ def main():
     et = LookupTable()
     et.read('elementlist.csv')
 
-    filename = sys.argv[1]
+    filename = infile
     xml_data = extract_xml(filename)
     parts = parse_xml(xml_data)
-    print(make_wanted_list(parts, colortable=ct, elementtable=et))
+    print(make_wanted_list(parts,
+                           colortable=ct,
+                           elementtable=et,
+                           notify=notify,
+                           condition=condition,
+                           listid=listid))
 
 
 if __name__ == '__main__':
