@@ -11,7 +11,7 @@ import json
 import urllib2
 from bs4 import BeautifulSoup
 
-CHART_URL = "http://www.peeron.com/inv/colors"
+CHART_URL = "http://ryanhowerter.net/colors"
 
 
 def get_chart(url=CHART_URL):
@@ -44,14 +44,16 @@ def main():
     html = get_chart()
 
     soup = BeautifulSoup(html)
-    table = soup.find_all("table")[1]
+    table = soup.find_all("table")[0]
 
-    headings = [th.get_text() for th in table.find("tr").find_all("th")]
+    headings = [th.get_text().replace(u'\xa0', ' ')
+                for th in table.find("tr").find_all("th")]
     print (headings)
 
     datasets = []
     for row in table.find_all('tr')[1:]:
-        rowdata = [td.get_text() for td in row.find_all("td")]
+        rowdata = [td.get_text().replace(u'\xa0', ' ')
+                   for td in row.find_all("td")]
         datasets.append(rowdata)
 
     write_csv(headings, datasets)
