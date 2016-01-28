@@ -48,17 +48,25 @@ def main():
 
     headings = [th.get_text().replace(u'\xa0', ' ')
                 for th in table.find("tr").find_all("th")]
+
+    assert len(headings) == 24
+
     print (headings)
 
     datasets = []
     for row in table.find_all('tr')[1:]:
         rowdata = [td.get_text().replace(u'\xa0', ' ')
                    for td in row.find_all("td")]
+
+        assert len(rowdata) == len(headings) + 1
+
+        rowdata = rowdata[0:13] + [[rowdata[13], rowdata[14]], ] + rowdata[15:]
+        assert len(rowdata) == len(headings)
+
         datasets.append(rowdata)
 
     write_csv(headings, datasets)
     write_json(headings, datasets)
-
 
 
 if __name__ == '__main__':
