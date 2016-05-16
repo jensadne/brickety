@@ -25,35 +25,30 @@ from __future__ import unicode_literals
 from __future__ import print_function
 from __future__ import division
 
+from collections import defaultdict
 import os
-import sys
 import zipfile
 import csv
 import argparse
 
 import xml.etree.ElementTree as ET
 
-parts = {}
-
 
 class LookupTable(object):
-    data = []
-
-    def read(self, filename):
+    def __init__(self, filename):
+        self.data = []
         if filename is None:
             raise IOError
 
-        with open(filename) as colorfile:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(base_dir, filename)) as colorfile:
             colorreader = csv.DictReader(colorfile, delimiter=b';')
-            for row in colorreader:
-                self.data.append(row)
+            self.data = [row for row in colorreader]
 
     def by_legoid(self, legoid):
         for c in self.data:
-            if len(c['LEGOID']) > 0:
-                if int(c['LEGOID']) == int(legoid):
-                    return c
-
+            if len(c['LEGOID']) > 0 and int(c['LEGOID']) == int(legoid):
+                return c
         return None
 
 
@@ -68,44 +63,47 @@ def parse_xml(indata):
     root = ET.fromstring(indata)
     assert root.tag == 'LXFML'
 
+    parts = defaultdict(int)
+
     for part in root.iter('Part'):
-        #print(part.attrib)
         design_id = part.attrib['designID']
         colors = part.attrib['materials'].split(',')
         color = int(max(colors))
-        if (design_id, color) in parts:
-            parts[(design_id, color)] += 1
-        else:
-            parts[(design_id, color)] = 1
-
+        parts[(design_id, color)] += 1
     return parts
 
 
-def make_wanted_list(parts, colortable, elementtable, notify=False, condition=None, listid=None):
-    out_data = []
+def bricklink_convert(parts):
+    colortable = LookupTable('colorlist.csv')
+    elementtable = LookupTable('elementlist.csv')
 
-    out_data.append('<INVENTORY>')
+    ret = []
     for part in parts:
-        lego_color = part[1]
-        item_id = part[0]
+        item_id, lego_color = part
 
-        color = colortable.by_legoid(lego_color)
-
+        color = colortable.by_legoid(lego_color)['BLID']
         element = elementtable.by_legoid(item_id)
 
         if element is not None:
             item_id = element['BLID']
 
+        quantity = parts[part]
+        ret.append((item_id, color, quantity))
+
+    return ret
+
+
+def make_wanted_list(parts, notify=False, condition=None, listid=None):
+    out_data = []
+
+    out_data.append('<INVENTORY>')
+    for item_id, color, quantity in parts:
         out_data.append('\t<ITEM>')
         out_data.append('\t\t<ITEMTYPE>P</ITEMTYPE>')
         out_data.append('\t\t<ITEMID>%s</ITEMID>' % item_id)
-        out_data.append('\t\t<COLOR>%s</COLOR>' % color['BLID'])
-        out_data.append('\t\t<MINQTY>%d</MINQTY>' % parts[part])
-        
-        if notify:
-            out_data.append('\t\t<NOTIFY>Y</NOTIFY>')
-        else:
-            out_data.append('\t\t<NOTIFY>N</NOTIFY>')
+        out_data.append('\t\t<COLOR>%s</COLOR>' % color)
+        out_data.append('\t\t<MINQTY>%d</MINQTY>' % quantity)
+        out_data.append('\t\t<NOTIFY>%s</NOTIFY>' % ('Y' if notify else 'N'))
 
         if condition is not None:
             assert condition.lower() == 'new' or condition.lower() == 'used'
@@ -122,23 +120,16 @@ def make_wanted_list(parts, colortable, elementtable, notify=False, condition=No
 
 def init_arg_parser():
     parser = argparse.ArgumentParser()
-
     parser.add_argument('ldd_file', type=str)
-
     parser.add_argument("--notify", action="store_true", help="Requests notification of availability")
-
     parser.add_argument("--condition", choices=['new', 'used'], help="Specify condition new/used")
-
     parser.add_argument("--listid", type=str, help="Specify wantedlist id to add to")
-
     return parser
 
 
 def main():
     parser = init_arg_parser()
     args = parser.parse_args()
-
-    print(args)
 
     infile = args.ldd_file
     notify = args.notify
@@ -148,21 +139,10 @@ def main():
     if not os.path.isfile(infile):
         raise IOError
 
-    ct = LookupTable()
-    ct.read('colorlist.csv')
-
-    et = LookupTable()
-    et.read('elementlist.csv')
-
     filename = infile
     xml_data = extract_xml(filename)
-    parts = parse_xml(xml_data)
-    print(make_wanted_list(parts,
-                           colortable=ct,
-                           elementtable=et,
-                           notify=notify,
-                           condition=condition,
-                           listid=listid))
+    parts = bricklink_convert(parse_xml(xml_data))
+    print(make_wanted_list(parts, notify=notify, condition=condition, listid=listid))
 
 
 if __name__ == '__main__':
